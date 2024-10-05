@@ -23,3 +23,9 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    ```bash
     npx expo start
    ```
+
+## Android Setup
+To run on your android device, install Expo app from the Play store in order to proceed further. Once installed, 
+- Scan the qr code from the Expo app
+- Make sure that your app and local execution are happening on the same wifi.
+- Load the bundles and you are set!
