@@ -1,4 +1,4 @@
-import { Text, View, TouchableOpacity, PanResponder, Dimensions, StyleSheet } from "react-native";
+import { Text, View, TouchableOpacity, PanResponder, Dimensions, StyleSheet, GestureResponderEvent, Modal } from "react-native";
 import React, { useRef, useState,useEffect } from "react";
 import { Gyroscope } from 'expo-sensors';
 import { Renderer,THREE } from 'expo-three';
@@ -169,7 +169,8 @@ export default function Index() {
 
   const [selectedBody, setSelectedBody] = useState<NASAExoplanetHWO | null>(null);
 
-  const [gyroData, setGyroData] = useState({ x: 0, y: 0, z: 0 });
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const mouseRef = useRef(new THREE.Vector2());
 
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -184,7 +185,7 @@ export default function Index() {
   const targetQuaternion = useRef(new THREE.Quaternion());
 
   const lastDistanceRef = useRef(0);
-  const zoomSpeedRef = useRef(0.01); // Reduced from 0.1 to 0.01 for lower sensitivity
+  const zoomSpeedRef = useRef(0.5); // Reduced from 0.1 to 0.01 for lower sensitivity
   const minZoom = 2; // Closest zoom level
   const maxZoom = 100; // Farthest zoom level
   const initialZoom = 5; // Initial camera position
@@ -239,6 +240,8 @@ const panResponder = useRef(
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt, gestureState) => {
+        const { locationX, locationY } = evt.nativeEvent;
+        handleTouchPlanet(locationX, locationY);
         if (evt.nativeEvent.touches.length === 1) {
           lastTouchRef.current = { x: gestureState.x0, y: gestureState.y0 };
         }
@@ -259,41 +262,49 @@ const panResponder = useRef(
           }
 
           lastTouchRef.current = { x: gestureState.moveX, y: gestureState.moveY };
-        } else if (evt.nativeEvent.touches.length === 2) {
+        } else
+        if (evt.nativeEvent.touches.length === 2) {
           // Pinch-to-zoom logic
           const touch1 = evt.nativeEvent.touches[0];
           const touch2 = evt.nativeEvent.touches[1];
-
+        
           const distance = Math.sqrt(
             Math.pow(touch1.pageX - touch2.pageX, 2) +
             Math.pow(touch1.pageY - touch2.pageY, 2)
           );
-
+        
           if (lastDistanceRef.current !== 0) {
             const distanceDelta = distance - lastDistanceRef.current;
             if (cameraRef.current) {
               const camera = cameraRef.current;
+              
+              // Get the camera's forward direction
+              const direction = new THREE.Vector3();
+              camera.getWorldDirection(direction);
+              
+              // Zoom factor
               const zoomFactor = 1 - distanceDelta * zoomSpeedRef.current;
               
-              // Calculate new position
-              const newPosition = camera.position.clone().multiplyScalar(zoomFactor);
+              // Calculate new position by moving in the direction the camera is looking
+              const newPosition = camera.position.clone().add(direction.multiplyScalar(distanceDelta * zoomSpeedRef.current));
               
               // Apply zoom limits
               const currentDistance = camera.position.length();
               const newDistance = newPosition.length();
+              
               if (newDistance >= minZoom && newDistance <= maxZoom) {
                 camera.position.copy(newPosition);
               } else {
-                // If we're outside the limits, we'll zoom along the camera's direction
-                const direction = camera.position.clone().normalize();
+                // If we're outside the limits, clamp the distance
                 const clampedDistance = Math.max(minZoom, Math.min(maxZoom, newDistance));
                 camera.position.copy(direction.multiplyScalar(clampedDistance));
               }
             }
           }
-
+        
           lastDistanceRef.current = distance;
         }
+        
       },
       onPanResponderRelease: () => {
         lastDistanceRef.current = 0;
@@ -302,6 +313,51 @@ const panResponder = useRef(
     })
   ).current;
 
+ const handleTouchPlanet = (x: number, y: number) => {
+  if (cameraRef.current && raycasterRef.current && sceneRef.current) {
+    mouseRef.current.x = (x / width) * 2 - 1;
+    mouseRef.current.y = -(y / height) * 2 + 1;
+
+    raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+
+    const intersects = raycasterRef.current.intersectObjects(sceneRef.current.children, true);
+
+    if (intersects.length > 0) {
+      const planet = intersects[0].object;
+      console.log(planet.userData);
+      const exoplanet = mockExoplanets.find(p => p.name === planet.userData.name);
+      if (exoplanet) {
+        setSelectedBody(exoplanet);
+
+        // Get the planet's position in world coordinates
+        const targetPosition = new THREE.Vector3();
+        planet.getWorldPosition(targetPosition);
+
+        // Set up the zooming distance to make the full planet visible
+        const planetRadius = planet.geometry.boundingSphere.radius;
+        const zoomDistance = planetRadius * 2.5; // Adjust factor to control how far you want the zoom
+
+        // Calculate the new camera position along the line from the camera to the planet
+        const direction = new THREE.Vector3().subVectors(targetPosition, cameraRef.current.position).normalize();
+        const newCameraPosition = new THREE.Vector3().copy(targetPosition).sub(direction.multiplyScalar(zoomDistance));
+
+        // Smoothly transition the camera position to the target position using lerp
+        const smoothZoom = () => {
+          cameraRef.current.position.lerp(newCameraPosition, 0.1); // Adjust the `0.1` for speed of zoom
+          cameraRef.current.lookAt(targetPosition); // Always keep looking at the planet
+
+          // Stop when the camera is close enough
+          if (cameraRef.current.position.distanceTo(newCameraPosition) > 0.01) {
+            requestAnimationFrame(smoothZoom);
+          }
+        };
+
+        // Start the smooth zoom
+        smoothZoom();
+      }
+    }
+  }
+};
   const createStarField = (scene: THREE.Scene) => {
     const starsGeometry = new THREE.BufferGeometry();
     const starsMaterial = new THREE.PointsMaterial({ color: 0xFFFFFF, size: 0.1 });
@@ -337,7 +393,7 @@ const panResponder = useRef(
   
     mockExoplanets.forEach(async (exoplanet, index) => {
       // Calculate size based on planet radius (scaled for visibility)
-      const size = exoplanet.radius * 0.1;
+      const size = exoplanet.radius * 0.5;
   
       // Generate a color based on the equilibrium temperature
       const temperature = exoplanet.equilibriumTemperature || 300;
@@ -360,6 +416,7 @@ const panResponder = useRef(
         map: texture,
       });
       const mesh = new THREE.Mesh(geometry, material);
+      mesh.userData = { name: exoplanet.name, type: exoplanet.type };
   
       // Create a group to hold the planet and its axis
       const planetGroup = new THREE.Group();
@@ -399,26 +456,30 @@ const panResponder = useRef(
       const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.5 });
       const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
       orbitLine.rotation.x = Math.PI / 2; // Rotate to lie flat in the X-Z plane
-      solarSystem.add(orbitLine);
+      //solarSystem.add(orbitLine);
+
+      console.log('Geometry:', JSON.stringify(geometry.toJSON(), null, 2));
+    console.log('Material:', JSON.stringify(material.toJSON(), null, 2));
+    console.log('Mesh:', JSON.stringify(mesh.toJSON(), null, 2));
     });
   
     // Animation function
     const animate = () => {
     requestAnimationFrame(animate);
   
-    solarSystem.children.forEach((orbitGroup: THREE.Object3D, index: number) => {
-      if (index === 0) return; // Skip the sun (assuming sun is the first child)
+    // solarSystem.children.forEach((orbitGroup: THREE.Object3D, index: number) => {
+    //   if (index === 0) return; // Skip the sun (assuming sun is the first child)
   
-      // Rotate the orbit group around the Y-axis
-      orbitGroup.rotateY(0.01 / (index + 1)); // Slower rotation for outer planets
+    //   // Rotate the orbit group around the Y-axis
+    //   orbitGroup.rotateY(0.01 / (index + 1)); // Slower rotation for outer planets
   
-      // Rotate the planet around its own axis
-      const planetGroup = orbitGroup.children[0];
-      if (planetGroup instanceof THREE.Group) {
-        planetGroup.rotateY(0.02); // Adjust rotation speed as needed
-        planetGroup.rotateX(0.01); // Adjust rotation speed as needed
-      }
-    });
+    //   // Rotate the planet around its own axis
+    //   const planetGroup = orbitGroup.children[0];
+    //   if (planetGroup instanceof THREE.Group) {
+    //     planetGroup.rotateY(0.02); // Adjust rotation speed as needed
+    //     planetGroup.rotateX(0.01); // Adjust rotation speed as needed
+    //   }
+    // });
   };
   
     // Start the animation
@@ -435,7 +496,7 @@ const panResponder = useRef(
 
     cameraRef.current.position.z = 5;
 
-    createStarField(sceneRef.current);
+    //createStarField(sceneRef.current);
     createCelestialBodies(sceneRef.current);
 
     const smoothingFactor = 0.5; // Adjust this value to control the smoothing (0.1 to 0.2 is a good range)
@@ -506,7 +567,7 @@ const panResponder = useRef(
       <Text style={styles.text}>
         Move your device to explore the 3D galaxy
       </Text>
-      {/* <Modal visible={!!selectedBody} transparent animationType="fade">
+      <Modal visible={!!selectedBody} transparent animationType="fade">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{selectedBody?.name}</Text>
@@ -522,7 +583,7 @@ const panResponder = useRef(
             </TouchableOpacity>
           </View>
         </View>
-      </Modal> */}
+      </Modal>
      
       {/* <Button 
         title="Reset Zoom" 
