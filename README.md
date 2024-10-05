@@ -1,4 +1,10 @@
-# 3D Exoplanets under HWO 🌌
+# NASA Space Apps Challenge 2024 [Noida] 🌌
+
+Team Name - code chefs
+Problem Statement - Navigator for the Habitable Worlds Observatory (HWO): Mapping the Characterizable Exoplanets in our Galaxy.
+Team Leader Email - sumeetmaurya85@gmail.com
+
+## A Brief of the Prototype:
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app). It includes following features until now: 
 - Gyroscope integration for free movement through-out the galaxy.
@@ -10,7 +16,7 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 - Each star revolves around the galactic circle.
 - Each star can be clicked to get its detailed info.
 
-## To start locally
+## Code Execution Instruction:
 
 1. Install dependencies
 
