@@ -5,6 +5,9 @@ import { Renderer,THREE } from 'expo-three';
 import { loadTextureAsync } from 'expo-three';
 import { ExpoWebGLRenderingContext, GLView } from 'expo-gl';
 import { Asset } from 'expo-asset';
+import mydata from "./data";
+import { ExoplanetSystem } from "./data";
+import { ScrollView } from "react-native";
 
 interface NASAExoplanetHWO {
   name: string;
@@ -167,7 +170,8 @@ const mockExoplanets: NASAExoplanetHWO[] = [
 
 export default function Index() {
 
-  const [selectedBody, setSelectedBody] = useState<NASAExoplanetHWO | null>(null);
+  const [selectedBody, setSelectedBody] = useState<ExoplanetSystem | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
@@ -186,8 +190,8 @@ export default function Index() {
 
   const lastDistanceRef = useRef(0);
   const zoomSpeedRef = useRef(0.5); // Reduced from 0.1 to 0.01 for lower sensitivity
-  const minZoom = 2; // Closest zoom level
-  const maxZoom = 100; // Farthest zoom level
+  const minZoom = 0; // Closest zoom level
+  const maxZoom = 400; // Farthest zoom level
   const initialZoom = 5; // Initial camera position
 
   const moveSpeedRef = useRef(0.05);
@@ -325,7 +329,7 @@ const panResponder = useRef(
     if (intersects.length > 0) {
       const planet = intersects[0].object;
       console.log(planet.userData);
-      const exoplanet = mockExoplanets.find(p => p.name === planet.userData.name);
+      const exoplanet = mydata.find(p => p.hostname === planet.userData.name);
       if (exoplanet) {
         setSelectedBody(exoplanet);
 
@@ -335,7 +339,7 @@ const panResponder = useRef(
 
         // Set up the zooming distance to make the full planet visible
         const planetRadius = planet.geometry.boundingSphere.radius;
-        const zoomDistance = planetRadius * 2.5; // Adjust factor to control how far you want the zoom
+        const zoomDistance = planetRadius * 10; // Adjust factor to control how far you want the zoom
 
         // Calculate the new camera position along the line from the camera to the planet
         const direction = new THREE.Vector3().subVectors(targetPosition, cameraRef.current.position).normalize();
@@ -387,105 +391,140 @@ const panResponder = useRef(
     'default': Asset.fromModule(require('../assets/images/sun.jpg'))
   };
 
-  const createCelestialBodies = (scene: THREE.Scene) => {
-    const solarSystem = new THREE.Group();
-    scene.add(solarSystem);
-  
-    mockExoplanets.forEach(async (exoplanet, index) => {
-      // Calculate size based on planet radius (scaled for visibility)
-      const size = exoplanet.radius * 0.5;
-  
-      // Generate a color based on the equilibrium temperature
-      const temperature = exoplanet.equilibriumTemperature || 300;
-      const color = new THREE.Color(
-        Math.min(1, temperature / 500),
-        Math.min(1, 300 / temperature),
-        Math.min(1, 200 / temperature)
-      );
-  
-      // Calculate distance (we'll use the index to spread them out)
-      const distance = (index + 1) * 5;
-  
-      const textureAsset = TEXTURE_MAPPING[exoplanet.name] || TEXTURE_MAPPING['default'];
-      const texture = await loadTextureAsync({
-        asset: textureAsset
-      });
-  
-      const geometry = new THREE.SphereGeometry(size, 32, 32);
-      const material = new THREE.MeshBasicMaterial({
-        map: texture,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.userData = { name: exoplanet.name, type: exoplanet.type };
-  
-      // Create a group to hold the planet and its axis
-      const planetGroup = new THREE.Group();
-  
-      // Add the planet mesh to the group
-      planetGroup.add(mesh);
-  
-      // Create and add the axis
-      const axisGeometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, -size * 1.2, 0),
-        new THREE.Vector3(0, size * 1.2, 0)
-      ]);
-      const axisMaterial = new THREE.LineBasicMaterial({ color: 0xFFFFFF }); // Grey color
-      const axisLine = new THREE.Line(axisGeometry, axisMaterial);
-      //planetGroup.add(axisLine);
-  
-      // Create an orbit group for each planet
-      const orbitGroup = new THREE.Group();
-      orbitGroup.add(planetGroup);
-  
-      // Position the planet within its orbit group
-      planetGroup.position.set(distance, 0, 0);
-  
-      // Add the orbit group to the solar system
-      solarSystem.add(orbitGroup);
-  
-      // If it's the sun, add a light source
-      if (exoplanet.name === "Sun") {
-        const light = new THREE.PointLight(0xffffff, 1, 100);
-        planetGroup.add(light);
-      }
-  
-      // Create orbit line
-      const orbitGeometry = new THREE.BufferGeometry().setFromPoints(
-        new THREE.Path().absarc(0, 0, distance, 0, Math.PI * 2, true).getPoints(64)
-      );
-      const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.5 });
-      const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
-      orbitLine.rotation.x = Math.PI / 2; // Rotate to lie flat in the X-Z plane
-      //solarSystem.add(orbitLine);
+const createStars = (scene: THREE.Scene) => {
+  const starsGeometry = new THREE.BufferGeometry();
+  const starsMaterial = new THREE.PointsMaterial({
+    color: 0xFFFFFF,
+    size: 0.5,
+    sizeAttenuation: true
+  });
 
-      console.log('Geometry:', JSON.stringify(geometry.toJSON(), null, 2));
-    console.log('Material:', JSON.stringify(material.toJSON(), null, 2));
-    console.log('Mesh:', JSON.stringify(mesh.toJSON(), null, 2));
+  const starsVertices = [];
+  for (let i = 0; i < 10000; i++) {
+    const x = THREE.MathUtils.randFloatSpread(2000);
+    const y = THREE.MathUtils.randFloatSpread(2000);
+    const z = THREE.MathUtils.randFloatSpread(2000);
+    starsVertices.push(x, y, z);
+  }
+
+  starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+  const starField = new THREE.Points(starsGeometry, starsMaterial);
+  scene.add(starField);
+};
+
+const createCelestialBodies = (scene: THREE.Scene, exoplanets: ExoplanetSystem[]) => {
+  const galacticCenter = new THREE.Group();
+  scene.add(galacticCenter);
+
+  // Find the maximum distance to scale our visualization
+  const maxDist = Math.max(...exoplanets.map(e => e.sy_dist));
+
+  exoplanets.forEach((exoplanet: ExoplanetSystem, index: number) => {
+    // Calculate size based on star radius or luminosity
+    const size = exoplanet.st_rad ? exoplanet.st_rad * 0.5 : 
+                 Math.pow(10, exoplanet.st_lum / 5) * 0.1;
+
+    // Generate a color based on the effective temperature
+    const temperature = exoplanet.st_teff || 5000; // Default to 5000K if not available
+    const color = new THREE.Color(
+      Math.min(1, temperature / 10000),
+      Math.min(1, 7000 / temperature),
+      Math.min(1, 5000 / temperature)
+    );
+
+    // Calculate position based on RA and Dec
+    const phi = (exoplanet.ra * Math.PI) / 12; // Convert RA to radians
+    const theta = ((90 - exoplanet.dec) * Math.PI) / 180; // Convert Dec to radians
+    const distance = (exoplanet.sy_dist / maxDist) * 500; // Scale distance
+
+    const x = distance * Math.sin(theta) * Math.cos(phi);
+    const y = distance * Math.cos(theta);
+    const z = distance * Math.sin(theta) * Math.sin(phi);
+
+    // Star (same as before)
+    const starGeometry = new THREE.SphereGeometry(Math.max(size, 0.5), 32, 32);
+    const starMaterial = new THREE.MeshPhongMaterial({
+      color: color,
+      shininess: 0.5,
+      emissive: color,
+      emissiveIntensity: 0.5
     });
-  
-    // Animation function
-    const animate = () => {
+    const starMesh = new THREE.Mesh(starGeometry, starMaterial);
+    starMesh.position.set(x, y, z);
+
+    starMesh.userData = {
+      name: exoplanet.hostname,
+      type: exoplanet.st_spectype,
+      temperature: exoplanet.st_teff,
+      radius: exoplanet.st_rad,
+      mass: exoplanet.st_mass,
+      luminosity: exoplanet.st_lum,
+      distance: exoplanet.sy_dist,
+      planets: exoplanet.sy_pnum
+    };
+
+    // Add the star to the galactic center
+    galacticCenter.add(starMesh);
+
+    // Add light source for each star
+    const light = new THREE.PointLight(color, 0.5, distance * 2);
+    light.position.set(x, y, z);
+    galacticCenter.add(light);
+
+    // If the star has planets, create star-like planets
+    if (exoplanet.sy_pnum > 0) {
+      const planetSize = size * 0.3; // Make planets smaller
+      const planetGeometry = new THREE.SphereGeometry(Math.max(planetSize, 0.3), 16, 16);
+      const planetMaterial = new THREE.MeshPhongMaterial({
+        color: color,
+        shininess: 0.3, // Lower shininess for planets
+        emissive: color,
+        emissiveIntensity: 0.3 // Less emissive than stars
+      });
+      const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
+      
+      // Set the position offset from the star
+      planetMesh.position.set(x + planetSize * 2, y, z);
+
+      // Add the planet to the galactic center
+      galacticCenter.add(planetMesh);
+
+      // Optional glow effect using a sprite for planets
+      const glowTexture = new THREE.TextureLoader().load(Asset.fromModule(require('../assets/images/20559.jpg')));
+      const glowMaterial = new THREE.SpriteMaterial({
+        map: glowTexture,
+        color: color,
+        transparent: true,
+        opacity: 0.5,
+      });
+      const glowSprite = new THREE.Sprite(glowMaterial);
+      glowSprite.scale.set(planetSize * 4, planetSize * 4, 1); // Scale glow
+      glowSprite.position.set(x + planetSize * 2, y, z);
+      galacticCenter.add(glowSprite);
+    }
+  });
+
+  // Ambient light for overall illumination
+  const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+  scene.add(ambientLight);
+
+  // Debug sphere to show the scale of the galactic center
+  const debugSphereGeometry = new THREE.SphereGeometry(10, 32, 32);
+  const debugSphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+  const debugSphere = new THREE.Mesh(debugSphereGeometry, debugSphereMaterial);
+  galacticCenter.add(debugSphere); // Attach to the galactic center for rotation visualization
+
+  // Animation function
+  const animate = () => {
     requestAnimationFrame(animate);
-  
-    // solarSystem.children.forEach((orbitGroup: THREE.Object3D, index: number) => {
-    //   if (index === 0) return; // Skip the sun (assuming sun is the first child)
-  
-    //   // Rotate the orbit group around the Y-axis
-    //   orbitGroup.rotateY(0.01 / (index + 1)); // Slower rotation for outer planets
-  
-    //   // Rotate the planet around its own axis
-    //   const planetGroup = orbitGroup.children[0];
-    //   if (planetGroup instanceof THREE.Group) {
-    //     planetGroup.rotateY(0.02); // Adjust rotation speed as needed
-    //     planetGroup.rotateX(0.01); // Adjust rotation speed as needed
-    //   }
-    // });
-  };
-  
-    // Start the animation
-    animate();
+    galacticCenter.rotateY(0.0001); // Rotating the whole galactic center
   };
 
+  // Start the animation
+  animate();
+};
+
+  
   
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     glRef.current = gl;
@@ -497,7 +536,7 @@ const panResponder = useRef(
     cameraRef.current.position.z = 5;
 
     //createStarField(sceneRef.current);
-    createCelestialBodies(sceneRef.current);
+    createCelestialBodies(sceneRef.current, mydata);
 
     const smoothingFactor = 0.5; // Adjust this value to control the smoothing (0.1 to 0.2 is a good range)
 
@@ -567,23 +606,110 @@ const panResponder = useRef(
       <Text style={styles.text}>
         Move your device to explore the 3D galaxy
       </Text>
-      <Modal visible={!!selectedBody} transparent animationType="fade">
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{selectedBody?.name}</Text>
-            <Text>Type: {selectedBody?.type}</Text>
-            <Text>Radius: {selectedBody?.radius} Earth radii</Text>
-            <Text>Mass: {selectedBody?.mass} Earth masses</Text>
-            <Text>Composition: {selectedBody?.composition}</Text>
-            {selectedBody?.habitabilityScore !== undefined && (
-              <Text>Habitability Score: {selectedBody.habitabilityScore}</Text>
+      <Modal visible={!!selectedBody} transparent animationType="slide">
+  <View style={styles.modalContainer}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>{selectedBody?.hostname}</Text>
+      {/* System Identifiers */}
+      
+      <ScrollView style={{width:"100%"}}>
+      <Text>Type: {selectedBody?.st_spectype}</Text>
+            <Text>Temperature: {selectedBody?.st_teff} K</Text>
+            <Text>Radius: {selectedBody?.st_rad} solar radii</Text>
+            <Text>Mass: {selectedBody?.st_mass} solar masses</Text>
+            <Text>Luminosity: {selectedBody?.st_lum}</Text>
+            <Text>Distance: {selectedBody?.sy_dist} parsecs</Text>
+            <Text>Number of Planets: {selectedBody?.sy_pnum}</Text>
+      
+
+      {showAll && (
+              <>
+               <Text>TIC ID: {selectedBody?.tic_id}</Text>
+      <Text>HIP Name: {selectedBody?.hip_name || 'N/A'}</Text>
+      <Text>HIP Companion Name: {selectedBody?.hip_compname}</Text>
+      <Text>HD Name: {selectedBody?.hd_name}</Text>
+      <Text>HR Name: {selectedBody?.hr_name}</Text>
+      <Text>GJ Name: {selectedBody?.gj_name}</Text>
+      <Text>Constellation: {selectedBody?.constellation}</Text>
+      
+      {/* Location and Distance */}
+      <Text>Distance: {selectedBody?.sy_dist} parsecs</Text>
+      <Text>RA: {selectedBody?.ra}</Text>
+      <Text>Dec: {selectedBody?.dec}</Text>
+      <Text>Parallax: {selectedBody?.sy_plx}</Text>
+      <Text>Parallax Error: {selectedBody?.sy_plxerr}</Text>
+      <Text>Parallax Ref Link: {selectedBody?.sy_plx_reflink}</Text>
+
+      {/* Star Properties */}
+      <Text>Visual Magnitude: {selectedBody?.sy_vmag}</Text>
+      <Text>Visual Magnitude Error: {selectedBody?.sy_vmagerr}</Text>
+      <Text>Visual Magnitude Ref Link: {selectedBody?.sy_vmag_reflink}</Text>
+      <Text>B-V Magnitude: {selectedBody?.sy_bvmag}</Text>
+      <Text>B-V Magnitude Error: {selectedBody?.sy_bvmagerr}</Text>
+      <Text>B-V Magnitude Ref Link: {selectedBody?.sy_bvmag_reflink}</Text>
+      <Text>R-C Magnitude: {selectedBody?.sy_rcmag}</Text>
+      <Text>R-C Magnitude Ref Link: {selectedBody?.sy_rcmag_reflink}</Text>
+      <Text>Spectral Type: {selectedBody?.st_spectype}</Text>
+      <Text>Spectral Type Ref Link: {selectedBody?.st_spectype_reflink}</Text>
+      <Text>Temperature: {selectedBody?.st_teff} K</Text>
+      <Text>Temperature Error: {selectedBody?.st_tefferr}</Text>
+      <Text>Temperature Ref Link: {selectedBody?.st_teff_reflink}</Text>
+      <Text>Luminosity: {selectedBody?.st_lum}</Text>
+      <Text>Luminosity Error: {selectedBody?.st_lumerr}</Text>
+      <Text>Luminosity Ref Link: {selectedBody?.st_lum_reflink}</Text>
+      <Text>Radius: {selectedBody?.st_rad} solar radii</Text>
+      <Text>Diameter: {selectedBody?.st_diam}</Text>
+      <Text>Mass: {selectedBody?.st_mass} solar masses</Text>
+      <Text>Metallicity: {selectedBody?.st_met}</Text>
+      <Text>Metallicity Error: {selectedBody?.st_meterr}</Text>
+      <Text>Metallicity Ref Link: {selectedBody?.st_met_reflink}</Text>
+      <Text>Surface Gravity: {selectedBody?.st_logg}</Text>
+      <Text>Surface Gravity Error: {selectedBody?.st_loggerr}</Text>
+      <Text>Surface Gravity Ref Link: {selectedBody?.st_logg_reflink}</Text>
+      <Text>Log R'HK: {selectedBody?.st_log_rhk}</Text>
+      <Text>Log R'HK Ref Link: {selectedBody?.st_log_rhk_reflink}</Text>
+
+      {/* Exoplanet Suitability Indices */}
+      <Text>Orbital Separation (EEI): {selectedBody?.st_eei_orbsep}</Text>
+      <Text>Angular Separation (EEI): {selectedBody?.st_eei_angsep}</Text>
+      <Text>Brightness Ratio (ETWIN): {selectedBody?.st_etwin_bratio}</Text>
+      <Text>R-C Magnitude (ETWIN): {selectedBody?.st_etwin_rcmag}</Text>
+      <Text>Orbital Period (EEI): {selectedBody?.st_eei_orbper}</Text>
+      <Text>Radial Velocity Amplitude (ETWIN): {selectedBody?.st_etwin_rvamp}</Text>
+      <Text>Astrometric Amplitude (ETWIN): {selectedBody?.st_etwin_astamp}</Text>
+
+      {/* Binary System Properties */}
+      <Text>WDS Designation: {selectedBody?.wds_designation}</Text>
+      <Text>WDS Companion: {selectedBody?.wds_comp}</Text>
+      <Text>WDS Separation: {selectedBody?.wds_sep || 'N/A'}</Text>
+      <Text>WDS Delta Magnitude: {selectedBody?.wds_deltamag || 'N/A'}</Text>
+
+      {/* System Flags */}
+      <Text>Disks Flag: {selectedBody?.sy_disks_flag}</Text>
+      <Text>Disks Flag Ref Link: {selectedBody?.sy_disks_flag_reflink}</Text>
+      <Text>Planets Flag: {selectedBody?.sy_planets_flag}</Text>
+      <Text>Number of Planets: {selectedBody?.sy_pnum}</Text>
+
+      {/* Target Group */}
+      <Text>Target Group: {selectedBody?.target_group}</Text>
+              </>
             )}
-            <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedBody(null)}>
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      </ScrollView>
+
+<View style={styles.buttons}>
+<TouchableOpacity style={styles.toggleButton} onPress={() => setShowAll(!showAll)}>
+            <Text style={styles.toggleButtonText}>{showAll ? 'Show Less' : 'Show More'}</Text>
+          </TouchableOpacity>
+
+      <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedBody(null)}>
+        <Text style={styles.closeButtonText}>Close</Text>
+      </TouchableOpacity>
+</View>
+      
+    </View>
+  </View>
+</Modal>
+
      
       {/* <Button 
         title="Reset Zoom" 
@@ -608,6 +734,9 @@ const styles = StyleSheet.create({
   glView: {
     flex: 1,
   },
+  content:{
+    textAlign:'left'
+  },
   text: {
     color: '#fff',
     fontSize: 18,
@@ -619,21 +748,21 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     position: 'absolute',
-    top: 0,
+    width: '100%',
     left: 0,
-    right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-end', // Align content to the bottom
     alignItems: 'center',
-    
   },
   modalContent: {
+    width: '100%',
+    maxHeight: '80%', // Limit height to 60% of the screen
     backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     padding: 20,
-    borderRadius: 10,
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   modalTitle: {
     fontSize: 24,
@@ -650,5 +779,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  toggleButton: {
+    marginTop: 20,
+    padding: 10,
+    backgroundColor: '#28a745',
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  toggleButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  buttons: {
+    flexDirection: 'row',   // Align buttons horizontally
+    alignSelf:'stretch',
+    justifyContent: 'space-between', // Spread buttons evenly
+    alignItems:'stretch',
+    alignContent:"space-between",
+    marginTop: 20,          // Add some spacing above the buttons
+  },
+
 });
 
