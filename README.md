@@ -29,3 +29,8 @@ To run on your android device, install Expo app from the Play store in order to 
 - Scan the QR code from the Expo app
 - Make sure that your app and local execution are happening on the same wifi.
 - Load the bundles and you are set!
+
+## Demonstration
+https://github.com/user-attachments/assets/c835aaf1-beb6-4fec-aac2-a361bb41cee9
+
+
