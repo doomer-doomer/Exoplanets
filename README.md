@@ -37,7 +37,8 @@ To run on your android device, install Expo app from the Play store in order to 
 - Load the bundles and you are set!
 
 ## Demonstration
-Note: This screen has been recorded in low resolution therfore visibility is blurly. Please increase your brightness for better view. This app works smoothly with 60fps and no lag, the video resolution is creating such effect so ignore it.
+>[!Note]
+> This screen has been recorded in low resolution therfore visibility is blurly. Please increase your brightness for better view. This app works smoothly with 60fps and no lag, the video resolution is creating such effect so ignore it.
 
 https://github.com/user-attachments/assets/c835aaf1-beb6-4fec-aac2-a361bb41cee9
 
